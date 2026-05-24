@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useChat } from '@/context/ChatContext';
-import { Settings, HelpCircle, Menu } from 'lucide-react';
+import { Settings, HelpCircle, Menu, User, LogOut } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const { 
@@ -13,7 +13,8 @@ export const Header: React.FC = () => {
     user, 
     logout,
     isSidebarOpen,
-    setSidebarOpen
+    setSidebarOpen,
+    setProfileModalOpen
   } = useChat();
 
   return (
@@ -52,22 +53,41 @@ export const Header: React.FC = () => {
 
         {/* Small screen actions aligned top-right on mobile */}
         <div className="flex items-center space-x-2 md:hidden">
-          {/* Settings button */}
-          <button 
-            onClick={() => {
-              if (user) {
-                if (confirm('Disconnect/Log out user session?')) logout();
-              } else {
+          {user ? (
+            <>
+              {/* Profile Settings Button */}
+              <button 
+                onClick={() => setProfileModalOpen(true)}
+                className="p-1.5 rounded-md hover:bg-[#181612] hover:text-amber-500 text-amber-500 border border-[#2E271F]/40 bg-amber-500/5 transition-all cursor-pointer"
+                title="Profile Settings"
+              >
+                <User className="w-4.5 h-4.5" />
+              </button>
+
+              {/* Logout Button */}
+              <button 
+                onClick={() => {
+                  if (confirm('Are you sure you want to log out?')) logout();
+                }}
+                className="p-1.5 rounded-md hover:bg-[#181612] hover:text-red-500 text-gray-400 border border-transparent active:border-[#2E271F] transition-all cursor-pointer"
+                title="Log Out"
+              >
+                <LogOut className="w-4.5 h-4.5" />
+              </button>
+            </>
+          ) : (
+            /* Login Button */
+            <button 
+              onClick={() => {
                 setAuthModalTab('signin');
                 setAuthModalOpen(true);
-              }
-            }}
-            className={`p-1.5 rounded-md hover:bg-[#181612] hover:text-amber-500 text-gray-400 border border-transparent active:border-[#2E271F] transition-all cursor-pointer ${
-              user ? 'text-amber-500 border-[#2E271F]/40 bg-amber-500/5' : ''
-            }`}
-          >
-            <Settings className="w-4.5 h-4.5" />
-          </button>
+              }}
+              className="p-1.5 rounded-md hover:bg-[#181612] hover:text-amber-500 text-gray-400 border border-transparent active:border-[#2E271F] transition-all cursor-pointer"
+              title="Login / Create Account"
+            >
+              <User className="w-4.5 h-4.5" />
+            </button>
+          )}
 
           {/* Help icon */}
           <button 
@@ -118,23 +138,44 @@ export const Header: React.FC = () => {
       {/* Actions - Right (Desktop only wrapper) */}
       <div className="hidden md:flex items-center space-x-3 text-gray-400">
         
-        {/* Settings button */}
-        <button 
-          onClick={() => {
-            if (user) {
-              if (confirm('Disconnect/Log out user session?')) logout();
-            } else {
+        {user ? (
+          <>
+            {/* Desktop Profile Settings Button */}
+            <button 
+              onClick={() => setProfileModalOpen(true)}
+              className="p-1.5 rounded-md hover:bg-[#181612] hover:text-amber-500 text-amber-500 border border-[#2E271F]/40 bg-amber-500/5 transition-all cursor-pointer flex items-center space-x-1"
+              title="Profile Settings"
+            >
+              <User className="w-4 h-4" />
+              <span className="text-[10px] font-mono uppercase font-bold tracking-wide">Profile</span>
+            </button>
+
+            {/* Desktop Logout Button */}
+            <button 
+              onClick={() => {
+                if (confirm('Are you sure you want to log out?')) logout();
+              }}
+              className="p-1.5 rounded-md hover:bg-[#181612] hover:text-red-500 border border-transparent hover:border-[#2E271F] transition-all cursor-pointer flex items-center space-x-1"
+              title="Log Out"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-[10px] font-mono uppercase font-bold tracking-wide">Logout</span>
+            </button>
+          </>
+        ) : (
+          /* Desktop Login Button */
+          <button 
+            onClick={() => {
               setAuthModalTab('signin');
               setAuthModalOpen(true);
-            }
-          }}
-          className={`p-1.5 rounded-md hover:bg-[#181612] hover:text-amber-500 border border-transparent hover:border-[#2E271F] transition-all cursor-pointer ${
-            user ? 'text-amber-500 border-[#2E271F]/40 bg-amber-500/5' : ''
-          }`}
-          title={user ? `Signed in as ${user.email}. Click to Logout.` : "Connect Profile / Login"}
-        >
-          <Settings className={`w-4 h-4 ${user ? 'animate-spin-slow' : ''}`} />
-        </button>
+            }}
+            className="p-1.5 rounded-md hover:bg-[#181612] hover:text-amber-500 border border-transparent hover:border-[#2E271F] transition-all cursor-pointer flex items-center space-x-1"
+            title="Connect Profile / Login"
+          >
+            <User className="w-4 h-4" />
+            <span className="text-[10px] font-mono uppercase font-bold tracking-wide">Login</span>
+          </button>
+        )}
 
         {/* Help icon */}
         <button 

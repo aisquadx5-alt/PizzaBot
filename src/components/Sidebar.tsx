@@ -147,7 +147,7 @@ export const Sidebar: React.FC = () => {
             <div className="flex items-center space-x-1.5 mt-0.5">
               <div className={`w-1.5 h-1.5 rounded-full ${user ? 'bg-amber-500 animate-pulse' : 'bg-gray-600'}`} />
               <span className="text-[8px] text-gray-500 tracking-wider font-mono uppercase truncate">
-                {user ? 'Status: SECURE_SOCKET' : 'Status: DISCONNECTED'}
+                {user ? 'Status: Online' : 'Status: Guest'}
               </span>
             </div>
           </div>

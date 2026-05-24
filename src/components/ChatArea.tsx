@@ -14,13 +14,20 @@ export const ChatArea: React.FC = () => {
     currentlyTypewritingId,
     completeTypewriter,
     apiError,
-    clearApiError
+    clearApiError,
+    user,
+    guestMessageCount,
+    selectedLanguage,
+    setSelectedLanguage,
+    setAuthModalOpen,
+    setAuthModalTab
   } = useChat();
 
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   
-  const isInputLocked = isLoading || isTypewriting;
+  const guestLocked = !user && guestMessageCount >= 4;
+  const isInputLocked = isLoading || isTypewriting || guestLocked;
 
   // Auto-scroll to bottom of chat feed
   useEffect(() => {
@@ -208,52 +215,96 @@ export const ChatArea: React.FC = () => {
           className="max-w-3xl mx-auto"
         >
           {/* Locked status banner indicator */}
-          {isInputLocked && (
+          {isLoading || isTypewriting ? (
             <div className="flex items-center space-x-1.5 mb-2 pl-3 text-[9px] text-amber-500 font-mono uppercase tracking-widest animate-pulse select-none">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
               <span>TERMINAL: SliceAI is typing order response...</span>
             </div>
-          )}
+          ) : guestLocked ? (
+            <div className="flex items-center space-x-1.5 mb-2 pl-3 text-[9px] text-red-500 font-mono uppercase tracking-widest select-none">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+              <span>TERMINAL: GUEST SESSION MESSAGE LIMIT EXCEEDED</span>
+            </div>
+          ) : null}
 
-          {/* Form input elements */}
-          <div className={`flex items-center bg-[#14120E] border rounded-2xl px-4 py-2 transition-all shadow-lg ${
-            isInputLocked 
-              ? 'border-amber-500/20 opacity-60 shadow-none' 
-              : 'border-[#2E271F] focus-within:border-amber-500/60 focus-within:shadow-[0_0_20px_rgba(245,158,11,0.06)]'
-          }`}>
-            
-            {/* Input field */}
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isInputLocked}
-              placeholder={
-                isInputLocked 
-                  ? "Please wait... SliceAI is writing..."
-                  : "Ask about our pizzas, toppings, or menu..."
-              }
-              className={`flex-1 bg-transparent px-2 py-2 text-sm text-gray-200 focus:outline-none placeholder-gray-600 disabled:cursor-not-allowed ${
-                isInputLocked ? 'select-none' : ''
-              }`}
-            />
+          {/* Form input elements wrapper with guest lock overlay positioning */}
+          <div className="relative">
+            <div className={`flex items-center bg-[#14120E] border rounded-2xl px-4 py-2 transition-all shadow-lg ${
+              isInputLocked 
+                ? 'border-amber-500/20 opacity-60 shadow-none' 
+                : 'border-[#2E271F] focus-within:border-amber-500/60 focus-within:shadow-[0_0_20px_rgba(245,158,11,0.06)]'
+            }`}>
+              
+              {/* Input field */}
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={isInputLocked}
+                placeholder={
+                  guestLocked
+                    ? "Chat locked. Please register to continue."
+                    : isInputLocked 
+                      ? "Please wait... SliceAI is writing..."
+                      : "Ask about our pizzas, toppings, or menu..."
+                }
+                className={`flex-1 bg-transparent px-2 py-2 text-sm text-gray-200 focus:outline-none placeholder-gray-600 disabled:cursor-not-allowed ${
+                  isInputLocked ? 'select-none' : ''
+                }`}
+              />
 
-            {/* Accessories */}
-            <div className="flex items-center">
-              <button
-                type="submit"
-                disabled={isInputLocked || !input.trim()}
-                className="p-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:from-[#1E1C18] disabled:to-[#1E1C18] disabled:opacity-30 disabled:text-gray-600 text-[#0D0C0A] transition-all hover:scale-105 active:scale-[0.98] disabled:hover:scale-100 disabled:active:scale-100 cursor-pointer shadow-md shadow-amber-500/5 hover:shadow-amber-500/15"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
+              {/* Accessories */}
+              <div className="flex items-center">
+                <button
+                  type="submit"
+                  disabled={isInputLocked || !input.trim()}
+                  className="p-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:from-[#1E1C18] disabled:to-[#1E1C18] disabled:opacity-30 disabled:text-gray-600 text-[#0D0C0A] transition-all hover:scale-105 active:scale-[0.98] disabled:hover:scale-100 disabled:active:scale-100 cursor-pointer shadow-md shadow-amber-500/5 hover:shadow-amber-500/15"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
             </div>
 
+            {/* Guest Lock overlay banner */}
+            {guestLocked && (
+              <div className="absolute inset-0 bg-[#0D0C0A]/95 backdrop-blur-sm rounded-2xl border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between px-5 py-3 animate-fade-in z-20 gap-3 sm:gap-0">
+                <span className="text-xs text-gray-300 font-sans font-medium text-center sm:text-left leading-relaxed">
+                  To continue chatting and place an order, please Create an Account.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthModalTab('signup');
+                    setAuthModalOpen(true);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-[#0D0C0A] font-mono text-[10px] font-bold uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-[0.98] flex-shrink-0"
+                >
+                  Create Account
+                </button>
+              </div>
+            )}
           </div>
           
-          {/* Fineprint Readout - Overhauled */}
-          <div className="text-center text-[8px] text-gray-600 tracking-widest font-mono mt-3 select-none uppercase">
-            PIZZA BITES // REAL-TIME AI ORDERING SYSTEM
+          {/* Language Selection Row & Fineprint */}
+          <div className="flex flex-col sm:flex-row items-center justify-between mt-3.5 px-2 gap-2 sm:gap-0 select-none">
+            <span className="text-[9px] text-gray-600 tracking-widest font-mono uppercase">
+              PIZZA BITES // CHANNEL: {selectedLanguage}
+            </span>
+            
+            <div className="flex items-center space-x-1.5">
+              <label className="text-[9px] font-mono text-gray-500 uppercase tracking-widest">Reply Language:</label>
+              <select
+                value={selectedLanguage}
+                onChange={(e) => setSelectedLanguage(e.target.value as any)}
+                disabled={isLoading || isTypewriting}
+                className="bg-[#14120E] border border-[#2E271F] focus:border-amber-500/50 text-[10px] font-mono text-gray-300 rounded-lg px-2.5 py-1 focus:outline-none transition-all cursor-pointer hover:bg-[#181612]"
+              >
+                <option value="English">English</option>
+                <option value="Urdu">Urdu</option>
+                <option value="Roman Urdu">Roman Urdu</option>
+              </select>
+            </div>
           </div>
 
         </form>

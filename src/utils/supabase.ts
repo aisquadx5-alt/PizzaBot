@@ -15,6 +15,9 @@ const isPlaceholder =
 export interface UserProfile {
   id: string;
   email: string;
+  name?: string;
+  phone?: string;
+  address?: string;
   updated_at: string;
 }
 
@@ -171,12 +174,21 @@ class MockSupabaseClient {
         return {
           eq: (field: string, value: any) => {
             return {
+              single: () => {
+                let data: any = null;
+                if (table === 'profiles') {
+                  data = self.getProfiles().find((p: any) => p[field] === value) || null;
+                }
+                return Promise.resolve({ data, error: null });
+              },
               order: (orderField: string, { ascending = true } = {}) => {
                 let data: any[] = [];
                 if (table === 'chats') {
                   data = self.getChats().filter((c: any) => c[field] === value);
                 } else if (table === 'messages') {
                   data = self.getMessages().filter((m: any) => m[field] === value);
+                } else if (table === 'profiles') {
+                  data = self.getProfiles().filter((p: any) => p[field] === value);
                 }
 
                 data.sort((a, b) => {
@@ -193,6 +205,8 @@ class MockSupabaseClient {
                   data = self.getChats().filter((c: any) => c[field] === value);
                 } else if (table === 'messages') {
                   data = self.getMessages().filter((m: any) => m[field] === value);
+                } else if (table === 'profiles') {
+                  data = self.getProfiles().filter((p: any) => p[field] === value);
                 }
                 resolve({ data, error: null });
               }
@@ -204,6 +218,8 @@ class MockSupabaseClient {
               data = self.getChats();
             } else if (table === 'messages') {
               data = self.getMessages();
+            } else if (table === 'profiles') {
+              data = self.getProfiles();
             }
 
             data.sort((a, b) => {
@@ -220,6 +236,8 @@ class MockSupabaseClient {
               data = self.getChats();
             } else if (table === 'messages') {
               data = self.getMessages();
+            } else if (table === 'profiles') {
+              data = self.getProfiles();
             }
             resolve({ data, error: null });
           }
@@ -253,9 +271,53 @@ class MockSupabaseClient {
 
           self.setStorageItem('pizza_messages', [...messages, ...newMessages]);
           return Promise.resolve({ data: newMessages, error: null });
+        } else if (table === 'profiles') {
+          const profiles = self.getProfiles();
+          const newProfiles = insertedData.map(p => ({
+            id: p.id || Math.random().toString(36).substring(2, 15),
+            email: p.email || '',
+            name: p.name || '',
+            phone: p.phone || '',
+            address: p.address || '',
+            updated_at: p.updated_at || new Date().toISOString()
+          }));
+          self.setStorageItem('pizza_profiles', [...profiles, ...newProfiles]);
+          return Promise.resolve({ data: newProfiles, error: null });
         }
 
         return Promise.resolve({ data: null, error: new Error('Unknown table') });
+      },
+
+      upsert: (payload: any) => {
+        let upsertedData = Array.isArray(payload) ? payload : [payload];
+        
+        if (table === 'profiles') {
+          const profiles = self.getProfiles();
+          let updatedProfiles = [...profiles];
+
+          upsertedData.forEach(p => {
+            const index = updatedProfiles.findIndex(item => item.id === p.id);
+            const entry = {
+              id: p.id,
+              email: p.email || profiles[index]?.email || '',
+              name: p.name !== undefined ? p.name : profiles[index]?.name || '',
+              phone: p.phone !== undefined ? p.phone : profiles[index]?.phone || '',
+              address: p.address !== undefined ? p.address : profiles[index]?.address || '',
+              updated_at: p.updated_at || new Date().toISOString()
+            };
+
+            if (index !== -1) {
+              updatedProfiles[index] = entry;
+            } else {
+              updatedProfiles.push(entry);
+            }
+          });
+
+          self.setStorageItem('pizza_profiles', updatedProfiles);
+          return Promise.resolve({ data: upsertedData, error: null });
+        }
+
+        return Promise.resolve({ data: null, error: new Error('Upsert unsupported for table') });
       },
 
       delete: () => {
@@ -264,7 +326,6 @@ class MockSupabaseClient {
             if (table === 'chats') {
               const chats = self.getChats().filter((c: any) => c[field] !== value);
               const messages = self.getMessages().filter((m: any) => {
-                // Cascading delete messages of this chat
                 if (field === 'id') return m.chat_id !== value;
                 return true;
               });
@@ -273,6 +334,9 @@ class MockSupabaseClient {
             } else if (table === 'messages') {
               const messages = self.getMessages().filter((m: any) => m[field] !== value);
               self.setStorageItem('pizza_messages', messages);
+            } else if (table === 'profiles') {
+              const profiles = self.getProfiles().filter((p: any) => p[field] !== value);
+              self.setStorageItem('pizza_profiles', profiles);
             }
             return Promise.resolve({ error: null });
           }
@@ -288,6 +352,12 @@ class MockSupabaseClient {
                 return c;
               });
               self.setStorageItem('pizza_chats', chats);
+            } else if (table === 'profiles') {
+              const profiles = self.getProfiles().map((p: any) => {
+                if (p[field] === value) return { ...p, ...fields };
+                return p;
+              });
+              self.setStorageItem('pizza_profiles', profiles);
             }
             return Promise.resolve({ error: null });
           }

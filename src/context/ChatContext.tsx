@@ -26,6 +26,14 @@ interface ChatContextType {
   telemetry: TelemetryState;
   guestId: string;
   isSidebarOpen: boolean;
+  guestMessageCount: number;
+  selectedLanguage: 'English' | 'Urdu' | 'Roman Urdu';
+  setSelectedLanguage: (lang: 'English' | 'Urdu' | 'Roman Urdu') => void;
+  profileModalOpen: boolean;
+  setProfileModalOpen: (open: boolean) => void;
+  profile: any | null;
+  fetchUserProfile: () => Promise<void>;
+  saveProfile: (name: string, phone: string, address: string) => Promise<{ success: boolean; error?: string }>;
   
   toggleMode: () => void;
   setWidgetOpen: (open: boolean) => void;
@@ -79,12 +87,24 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<any | null>(null);
   const [guestId, setGuestId] = useState<string>('');
 
+  // Guest limit, Language selection & Profiles
+  const [guestMessageCount, setGuestMessageCount] = useState<number>(0);
+  const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'Urdu' | 'Roman Urdu'>('English');
+  const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
+  const [profile, setProfile] = useState<any | null>(null);
+
   // Initialize modes, check session, and generate guest ID
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedMode = localStorage.getItem('pizza_is_widget_mode');
       if (storedMode) {
         setIsWidgetMode(storedMode === 'true');
+      }
+
+      // Load guest message count
+      const storedCount = localStorage.getItem('pizza_guest_message_count');
+      if (storedCount) {
+        setGuestMessageCount(parseInt(storedCount) || 0);
       }
 
       // Generate or load unique Guest ID (Issue 1)
@@ -103,6 +123,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (event === 'SIGNED_IN') {
         setAuthModalOpen(false);
+      } else if (event === 'SIGNED_OUT') {
+        setProfile(null);
       }
     });
 
@@ -110,6 +132,71 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subscription.unsubscribe();
     };
   }, []);
+
+  // Fetch profile when user changes
+  useEffect(() => {
+    if (user) {
+      fetchUserProfile();
+    } else {
+      setProfile(null);
+    }
+  }, [user]);
+
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user profile:', error);
+      } else if (data) {
+        setProfile(data);
+      } else {
+        // If profile doesn't exist, set to empty profile model
+        const defaultProfile = {
+          id: user.id,
+          email: user.email,
+          name: '',
+          phone: '',
+          address: '',
+          updated_at: new Date().toISOString()
+        };
+        setProfile(defaultProfile);
+      }
+    } catch (err) {
+      console.error('Failed to retrieve profile:', err);
+    }
+  };
+
+  const saveProfile = async (name: string, phone: string, address: string) => {
+    if (!user) return { success: false, error: 'You must be logged in to save settings.' };
+    
+    try {
+      const updatedProfile = {
+        id: user.id,
+        email: user.email,
+        name,
+        phone,
+        address,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert(updatedProfile);
+
+      if (error) throw error;
+      setProfile(updatedProfile);
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error saving profile:', err);
+      return { success: false, error: err.message || 'Failed to save settings.' };
+    }
+  };
 
   // Fetch chats list whenever user or guestId changes
   useEffect(() => {
@@ -289,6 +376,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading || isTypewriting) return;
 
+    // Check guest message limit
+    if (!user) {
+      if (guestMessageCount >= 4) {
+        console.log('Guest message limit reached. Lock input.');
+        return;
+      }
+    }
+
     let activeId = currentChatId;
     
     // Auto-create chat if none is active
@@ -350,12 +445,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Gracefully caught chat title update error:', titleErr);
     }
 
+    // Increment guest message count if guest and successfully saved to local state
+    if (!user) {
+      const nextCount = guestMessageCount + 1;
+      setGuestMessageCount(nextCount);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pizza_guest_message_count', String(nextCount));
+      }
+    }
+
     // Gather conversation history for OpenRouter
     // We construct the thread from local state history + current input to guarantee correctness
     const threadHistory = [...messages, userMsg].map(m => ({
       role: m.role,
       content: m.content
     }));
+
+    // Invisibly append language instruction to the payload going to the API
+    const apiPayloadMessages = [...threadHistory];
+    if (apiPayloadMessages.length > 0) {
+      const lastMsg = apiPayloadMessages[apiPayloadMessages.length - 1];
+      if (lastMsg.role === 'user') {
+        lastMsg.content = `${lastMsg.content}\n\n[Please strictly reply in ${selectedLanguage}]`;
+      }
+    }
 
     let aiContent = '';
     let apiSuccess = false;
@@ -367,7 +480,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ messages: threadHistory }),
+        body: JSON.stringify({ 
+          messages: apiPayloadMessages,
+          isLoggedIn: !!user,
+          hasPhoneNumber: !!(profile?.phone && profile.phone.trim().replace(/\D/g, '').length === 11),
+          phoneNumber: profile?.phone || ''
+        }),
       });
 
       if (!response.ok) {
@@ -437,6 +555,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setUser(null);
+      setProfile(null);
       setCurrentChatId(null);
       setMessages([]);
     } catch (err) {
@@ -476,6 +595,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       telemetry,
       guestId,
       isSidebarOpen,
+      guestMessageCount,
+      selectedLanguage,
+      setSelectedLanguage,
+      profileModalOpen,
+      setProfileModalOpen,
+      profile,
+      fetchUserProfile,
+      saveProfile,
       toggleMode,
       setWidgetOpen,
       startNewChat,

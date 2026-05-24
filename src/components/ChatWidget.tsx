@@ -16,12 +16,20 @@ export const ChatWidget: React.FC = () => {
     isWidgetOpen,
     setWidgetOpen,
     apiError,
-    clearApiError
+    clearApiError,
+    user,
+    guestMessageCount,
+    selectedLanguage,
+    setSelectedLanguage,
+    setAuthModalOpen,
+    setAuthModalTab
   } = useChat();
 
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isInputLocked = isLoading || isTypewriting;
+  
+  const guestLocked = !user && guestMessageCount >= 4;
+  const isInputLocked = isLoading || isTypewriting || guestLocked;
 
   // Auto-scroll the widget feed to the bottom
   useEffect(() => {
@@ -171,27 +179,73 @@ export const ChatWidget: React.FC = () => {
 
           {/* Footer Input Bar */}
           <div className="p-3 bg-[#14120E] border-t border-[#2E271F]">
+            
+            {/* Language dropdown in widget footer */}
+            <div className="flex items-center justify-between mb-2 px-1 select-none">
+              <span className="text-[8px] text-gray-500 font-mono tracking-widest uppercase">
+                Channel: {selectedLanguage}
+              </span>
+              <select
+                value={selectedLanguage}
+                onChange={(e) => setSelectedLanguage(e.target.value as any)}
+                disabled={isLoading || isTypewriting}
+                className="bg-[#1C1A15] border border-[#2E271F] text-[9px] font-mono text-gray-300 rounded px-1.5 py-0.5 focus:outline-none cursor-pointer"
+              >
+                <option value="English">English</option>
+                <option value="Urdu">Urdu</option>
+                <option value="Roman Urdu">Roman/Urdu</option>
+              </select>
+            </div>
+
             <form onSubmit={handleSubmit} className="flex items-center space-x-2 relative">
               
               {/* Sync status labels */}
-              {isInputLocked && (
-                <div className="absolute -top-6 left-1 text-[7px] text-amber-500 font-mono uppercase tracking-widest flex items-center space-x-1 animate-pulse">
+              {isLoading || isTypewriting ? (
+                <div className="absolute -top-5 left-1 text-[7px] text-amber-500 font-mono uppercase tracking-widest flex items-center space-x-1 animate-pulse">
                   <span>SliceAI is writing a response...</span>
                 </div>
-              )}
+              ) : guestLocked ? (
+                <div className="absolute -top-5 left-1 text-[7px] text-red-500 font-mono uppercase tracking-widest flex items-center space-x-1">
+                  <span>GUEST SESSION LIMIT EXCEEDED</span>
+                </div>
+              ) : null}
 
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                disabled={isInputLocked}
-                placeholder={
-                  isInputLocked 
-                    ? "Please wait..." 
-                    : "Ask a question..."
-                }
-                className="flex-1 bg-[#1C1A15] border border-[#2E271F] focus:border-amber-500/40 rounded-xl px-3 py-2 text-[11px] text-gray-200 focus:outline-none placeholder-gray-600 disabled:cursor-not-allowed"
-              />
+              {/* Input container parent for overlay banner */}
+              <div className="relative flex-1 flex items-center">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  disabled={isInputLocked}
+                  placeholder={
+                    guestLocked 
+                      ? "Chat locked..." 
+                      : isInputLocked
+                        ? "Please wait..."
+                        : "Ask a question..."
+                  }
+                  className="w-full bg-[#1C1A15] border border-[#2E271F] focus:border-amber-500/40 rounded-xl px-3 py-2 text-[11px] text-gray-200 focus:outline-none placeholder-gray-600 disabled:cursor-not-allowed"
+                />
+
+                {/* Guest Lock Overlay */}
+                {guestLocked && (
+                  <div className="absolute inset-0 bg-[#0D0C0A]/95 rounded-xl border border-amber-500/30 flex items-center justify-between px-3 py-1 animate-fade-in z-20">
+                    <span className="text-[9px] text-gray-300 font-sans font-medium">
+                      Create an account to continue ordering.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthModalTab('signup');
+                        setAuthModalOpen(true);
+                      }}
+                      className="px-2 py-1 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-[#0D0C0A] font-mono text-[8px] font-bold uppercase tracking-wider rounded-lg cursor-pointer transition-all active:scale-[0.98] flex-shrink-0"
+                    >
+                      Login
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <button
                 type="submit"
