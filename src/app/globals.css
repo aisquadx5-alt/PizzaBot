@@ -119,3 +119,13 @@ body {
 .orange-neon-border:hover::after {
   opacity: 0.9;
 }
+
+/* Mobile Drawer Slide-In Keyframes (Issue 3) */
+@keyframes slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

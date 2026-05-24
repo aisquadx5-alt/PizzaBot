@@ -24,6 +24,8 @@ interface ChatContextType {
   authModalTab: 'signin' | 'signup';
   apiError: string | null;
   telemetry: TelemetryState;
+  guestId: string;
+  isSidebarOpen: boolean;
   
   toggleMode: () => void;
   setWidgetOpen: (open: boolean) => void;
@@ -37,6 +39,7 @@ interface ChatContextType {
   clearApiError: () => void;
   completeTypewriter: (msgId: string) => void;
   updateTelemetry: (fields: Partial<TelemetryState>) => void;
+  setSidebarOpen: (open: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -55,6 +58,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'signin' | 'signup'>('signin');
   
+  // Mobile sidebar state
+  const [isSidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  
   // Chats and State
   const [chats, setChats] = useState<ChatSession[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -69,16 +75,25 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Custom pizza telemetry
   const [telemetry, setTelemetry] = useState<TelemetryState>(DEFAULT_TELEMETRY);
   
-  // User Auth
+  // User Auth & Unique Guest ID
   const [user, setUser] = useState<any | null>(null);
+  const [guestId, setGuestId] = useState<string>('');
 
-  // Initialize modes and check session
+  // Initialize modes, check session, and generate guest ID
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedMode = localStorage.getItem('pizza_is_widget_mode');
       if (storedMode) {
         setIsWidgetMode(storedMode === 'true');
       }
+
+      // Generate or load unique Guest ID (Issue 1)
+      let id = localStorage.getItem('pizza_guest_id');
+      if (!id) {
+        id = 'guest_' + Math.random().toString(36).substring(2, 11);
+        localStorage.setItem('pizza_guest_id', id);
+      }
+      setGuestId(id);
     }
 
     // Subscribe to Supabase auth events
@@ -96,10 +111,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Fetch chats list whenever user changes
+  // Fetch chats list whenever user or guestId changes
   useEffect(() => {
-    fetchChats();
-  }, [user]);
+    if (guestId || user) {
+      fetchChats();
+    }
+  }, [user, guestId]);
 
   // Read telemetry metrics from the latest messages
   useEffect(() => {
@@ -162,8 +179,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user) {
         query = query.eq('user_id', user.id);
       } else {
-        // Guest mode - fetch guest chats from local or null user chats
-        query = query.eq('user_id', 'guest');
+        const activeGuestId = guestId || (typeof window !== 'undefined' ? localStorage.getItem('pizza_guest_id') : null);
+        if (activeGuestId) {
+          query = query.eq('user_id', activeGuestId);
+        } else {
+          return; // Wait until guestId is generated
+        }
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -208,9 +229,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const startNewChat = async (title: string = 'New Order') => {
     try {
+      const activeUserId = user ? user.id : (guestId || (typeof window !== 'undefined' ? localStorage.getItem('pizza_guest_id') : null) || 'guest');
       const newChat = {
         title,
-        user_id: user ? user.id : 'guest',
+        user_id: activeUserId,
         created_at: new Date().toISOString(),
       };
 
@@ -224,7 +246,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Supabase chat insert failed, falling back to local memory session:', dbErr);
         created = {
           id: 'local_' + Math.random().toString(36).substring(2, 15),
-          user_id: user ? user.id : 'guest',
+          user_id: activeUserId,
           title,
           created_at: new Date().toISOString()
         };
@@ -451,6 +473,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       authModalTab,
       apiError,
       telemetry,
+      guestId,
+      isSidebarOpen,
       toggleMode,
       setWidgetOpen,
       startNewChat,
@@ -462,7 +486,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout,
       clearApiError,
       completeTypewriter,
-      updateTelemetry
+      updateTelemetry,
+      setSidebarOpen
     }}>
       {children}
     </ChatContext.Provider>
