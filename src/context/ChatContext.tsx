@@ -343,8 +343,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const cleanTitle = content.length > 25 ? content.substring(0, 22) + '...' : content;
         setChats(prev => prev.map(c => c.id === activeId ? { ...c, title: cleanTitle } : c));
         
-        // Attempt database write asynchronously
-        supabase.from('chats').update({ title: cleanTitle }).eq('id', activeId).catch(() => {});
+        // Attempt database write securely using native await (Issue 1)
+        await supabase.from('chats').update({ title: cleanTitle }).eq('id', activeId);
       }
     } catch (titleErr) {
       console.error('Gracefully caught chat title update error:', titleErr);
@@ -381,7 +381,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       console.error('Error calling /api/chat OpenRouter API route:', err);
       setIsLoading(false);
-      setApiError(err.message || 'Connection failed. Please inspect your OpenRouter API Key.');
+      // Return a polite warning instead of scary technical error logs (Issue 2)
+      setApiError('System offline. Please check API keys.');
       return; // Do not block UI, display error card instead
     }
 

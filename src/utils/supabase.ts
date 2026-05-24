@@ -300,6 +300,18 @@ class MockSupabaseClient {
 // Export initialization details
 export const isMockMode = isPlaceholder;
 
-export const supabase = isPlaceholder 
-  ? (new MockSupabaseClient() as any)
-  : createClient(supabaseUrl, supabaseAnonKey);
+let supabaseInstance: any;
+
+if (isPlaceholder) {
+  supabaseInstance = new MockSupabaseClient();
+} else {
+  try {
+    // Wrap createClient in try/catch to handle malformed or empty env URLs gracefully
+    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
+  } catch (err) {
+    console.error('Failed to initialize live Supabase client. Activating mock fallback:', err);
+    supabaseInstance = new MockSupabaseClient();
+  }
+}
+
+export const supabase = supabaseInstance;
