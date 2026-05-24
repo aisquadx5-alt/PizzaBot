@@ -181,6 +181,13 @@ class MockSupabaseClient {
                 }
                 return Promise.resolve({ data, error: null });
               },
+              maybeSingle: () => {
+                let data: any = null;
+                if (table === 'profiles') {
+                  data = self.getProfiles().find((p: any) => p[field] === value) || null;
+                }
+                return Promise.resolve({ data, error: null });
+              },
               order: (orderField: string, { ascending = true } = {}) => {
                 let data: any[] = [];
                 if (table === 'chats') {

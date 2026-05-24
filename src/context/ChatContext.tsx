@@ -149,14 +149,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
       
       if (error) {
-        console.error('Error fetching user profile:', error);
-      } else if (data) {
+        // Explicitly ignore "No rows found" error code PGRST116
+        if (error.code !== 'PGRST116' && !error.message?.includes('PGRST116') && !error.message?.includes('No rows found')) {
+          console.error('Error fetching user profile:', error);
+        }
+      }
+      
+      if (data) {
         setProfile(data);
       } else {
-        // If profile doesn't exist, set to empty profile model
+        // If profile doesn't exist yet, initialize a default empty profile model
         const defaultProfile = {
           id: user.id,
           email: user.email,
