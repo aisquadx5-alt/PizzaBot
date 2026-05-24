@@ -732,7 +732,6 @@ export default function AdminPage() {
                             <div>
                               <div className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Lifetime Value (Spent):</div>
                               <div className="text-xl md:text-2xl font-extrabold text-amber-500 flex items-center space-x-1 mt-1 font-mono">
-                                <DollarSign className="w-5 h-5 text-amber-500 flex-shrink-0" />
                                 <span>Rs. {activeUserStats.ltv.toLocaleString()}</span>
                               </div>
                             </div>

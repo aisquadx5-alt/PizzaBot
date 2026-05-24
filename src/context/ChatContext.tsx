@@ -511,7 +511,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 3. Save and display the AI assistant response
     if (apiSuccess && aiContent) {
-      const orderRegex = /\[ORDER:\s*([^|\]]+)\s*\|\s*([^|\]]+)\s*\|\s*([^\]]+)\]/;
+      const orderRegex = /\[ORDER:\s*([^|\]]+)\s*\|\s*([^|\]]+)\s*\|\s*([^\]]+)\]/i;
       const match = aiContent.match(orderRegex);
       let cleanAiContent = aiContent;
 
@@ -519,7 +519,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cleanAiContent = aiContent.replace(orderRegex, '').trim();
         const itemName = match[1].trim();
         const quantity = parseInt(match[2].trim()) || 1;
-        const price = parseFloat(match[3].trim()) || 0;
+        const price = parseInt(match[3].trim()) || 0;
 
         // Background direct call to real Supabase database orders table
         try {
