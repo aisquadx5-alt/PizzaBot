@@ -21,6 +21,15 @@ export interface UserProfile {
   updated_at: string;
 }
 
+export interface PizzaOrder {
+  id: string;
+  user_id: string;
+  item_name: string;
+  quantity: number;
+  price: number;
+  created_at: string;
+}
+
 export interface ChatSession {
   id: string;
   user_id: string | null;
@@ -196,6 +205,8 @@ class MockSupabaseClient {
                   data = self.getMessages().filter((m: any) => m[field] === value);
                 } else if (table === 'profiles') {
                   data = self.getProfiles().filter((p: any) => p[field] === value);
+                } else if (table === 'orders') {
+                  data = self.getStorageItem<PizzaOrder[]>('pizza_orders', []).filter((o: any) => o[field] === value);
                 }
 
                 data.sort((a, b) => {
@@ -214,6 +225,8 @@ class MockSupabaseClient {
                   data = self.getMessages().filter((m: any) => m[field] === value);
                 } else if (table === 'profiles') {
                   data = self.getProfiles().filter((p: any) => p[field] === value);
+                } else if (table === 'orders') {
+                  data = self.getStorageItem<PizzaOrder[]>('pizza_orders', []).filter((o: any) => o[field] === value);
                 }
                 resolve({ data, error: null });
               }
@@ -227,6 +240,8 @@ class MockSupabaseClient {
               data = self.getMessages();
             } else if (table === 'profiles') {
               data = self.getProfiles();
+            } else if (table === 'orders') {
+              data = self.getStorageItem<PizzaOrder[]>('pizza_orders', []);
             }
 
             data.sort((a, b) => {
@@ -245,6 +260,8 @@ class MockSupabaseClient {
               data = self.getMessages();
             } else if (table === 'profiles') {
               data = self.getProfiles();
+            } else if (table === 'orders') {
+              data = self.getStorageItem<PizzaOrder[]>('pizza_orders', []);
             }
             resolve({ data, error: null });
           }
@@ -290,6 +307,18 @@ class MockSupabaseClient {
           }));
           self.setStorageItem('pizza_profiles', [...profiles, ...newProfiles]);
           return Promise.resolve({ data: newProfiles, error: null });
+        } else if (table === 'orders') {
+          const orders = self.getStorageItem<PizzaOrder[]>('pizza_orders', []);
+          const newOrders = insertedData.map(o => ({
+            id: o.id || Math.random().toString(36).substring(2, 15),
+            user_id: o.user_id || 'guest',
+            item_name: o.item_name || '',
+            quantity: o.quantity || 1,
+            price: o.price || 0,
+            created_at: o.created_at || new Date().toISOString()
+          }));
+          self.setStorageItem('pizza_orders', [...orders, ...newOrders]);
+          return Promise.resolve({ data: newOrders, error: null });
         }
 
         return Promise.resolve({ data: null, error: new Error('Unknown table') });

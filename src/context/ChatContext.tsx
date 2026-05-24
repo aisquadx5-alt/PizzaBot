@@ -511,13 +511,39 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 3. Save and display the AI assistant response
     if (apiSuccess && aiContent) {
+      const orderRegex = /\[ORDER:\s*([^|\]]+)\s*\|\s*([^|\]]+)\s*\|\s*([^\]]+)\]/;
+      const match = aiContent.match(orderRegex);
+      let cleanAiContent = aiContent;
+
+      if (match) {
+        cleanAiContent = aiContent.replace(orderRegex, '').trim();
+        const itemName = match[1].trim();
+        const quantity = parseInt(match[2].trim()) || 1;
+        const price = parseFloat(match[3].trim()) || 0;
+
+        // Background direct call to real Supabase database orders table
+        try {
+          const activeUserId = user ? user.id : (guestId || (typeof window !== 'undefined' ? localStorage.getItem('pizza_guest_id') : null) || 'guest');
+          const { error: dbErr } = await supabase.from('orders').insert({
+            user_id: activeUserId,
+            item_name: itemName,
+            quantity: quantity,
+            price: price
+          });
+          if (dbErr) throw dbErr;
+          console.log('Silently stored real order record:', { itemName, quantity, price });
+        } catch (orderErr) {
+          console.error('Failed to silently store order record:', orderErr);
+        }
+      }
+
       const aiMsgId = 'local_ai_' + Math.random().toString(36).substring(2, 15);
       
       const assistantMsg: ChatMessage = {
         id: aiMsgId,
         chat_id: activeId,
         role: 'assistant',
-        content: aiContent,
+        content: cleanAiContent,
         created_at: new Date().toISOString(),
       };
 
@@ -536,7 +562,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .insert({
             chat_id: activeId,
             role: 'assistant',
-            content: aiContent,
+            content: cleanAiContent,
             created_at: new Date().toISOString()
           })
           .select();
