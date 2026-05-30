@@ -24,9 +24,11 @@ export interface UserProfile {
 export interface PizzaOrder {
   id: string;
   user_id: string;
+  order_id: string;
   item_name: string;
   quantity: number;
   price: number;
+  status: 'pending' | 'approved' | 'rejected';
   created_at: string;
 }
 
@@ -175,6 +177,40 @@ class MockSupabaseClient {
     window.dispatchEvent(customEvent);
   }
 
+  channel(channelName: string) {
+    if (typeof window === 'undefined') {
+      return {
+        on: () => {
+          return {
+            subscribe: () => ({ unsubscribe: () => {} })
+          };
+        },
+        subscribe: () => ({ unsubscribe: () => {} })
+      };
+    }
+
+    return {
+      on: (event: string, filter: any, callback: (payload: any) => void) => {
+        const listener = (e: any) => {
+          callback(e.detail);
+        };
+
+        window.addEventListener('mock-orders-change' as any, listener);
+
+        return {
+          subscribe: () => {
+            return {
+              unsubscribe: () => {
+                window.removeEventListener('mock-orders-change' as any, listener);
+              }
+            };
+          }
+        };
+      },
+      subscribe: () => ({ unsubscribe: () => {} })
+    };
+  }
+
   // --- Database Simulation ---
   from(table: string) {
     const self = this;
@@ -312,12 +348,25 @@ class MockSupabaseClient {
           const newOrders = insertedData.map(o => ({
             id: o.id || Math.random().toString(36).substring(2, 15),
             user_id: o.user_id || 'guest',
+            order_id: o.order_id || '#0000',
             item_name: o.item_name || '',
             quantity: o.quantity || 1,
             price: o.price || 0,
+            status: o.status || 'pending',
             created_at: o.created_at || new Date().toISOString()
           }));
           self.setStorageItem('pizza_orders', [...orders, ...newOrders]);
+
+          // Emit mock realtime event
+          if (typeof window !== 'undefined') {
+            newOrders.forEach(newOrder => {
+              const customEvent = new CustomEvent('mock-orders-change', {
+                detail: { new: newOrder }
+              });
+              window.dispatchEvent(customEvent);
+            });
+          }
+
           return Promise.resolve({ data: newOrders, error: null });
         }
 
@@ -394,6 +443,12 @@ class MockSupabaseClient {
                 return p;
               });
               self.setStorageItem('pizza_profiles', profiles);
+            } else if (table === 'orders') {
+              const orders = self.getStorageItem<PizzaOrder[]>('pizza_orders', []).map((o: any) => {
+                if (o[field] === value) return { ...o, ...fields };
+                return o;
+              });
+              self.setStorageItem('pizza_orders', orders);
             }
             return Promise.resolve({ error: null });
           }

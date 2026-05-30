@@ -30,7 +30,8 @@ export default function AdminPage() {
   const [checkingSession, setCheckingSession] = useState(true);
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'crm' | 'analytics'>('crm');
+  const [activeTab, setActiveTab] = useState<'crm' | 'analytics' | 'oms'>('crm');
+  const [toast, setToast] = useState<{ show: boolean; orderId: string } | null>(null);
 
   // Filters & Selected entities
   const [filterType, setFilterType] = useState<'all' | 'registered' | 'guest'>('all');
@@ -94,6 +95,73 @@ export default function AdminPage() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [activeChatMessages]);
+
+  // Real-time Postgres changes subscription on orders table
+  useEffect(() => {
+    if (!sessionUser || sessionUser.email !== 'ailearner@admin.com') return;
+
+    const subscription = supabase
+      .channel('oms-orders')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders' },
+        (payload: any) => {
+          const newOrder = payload.new as PizzaOrder;
+          if (newOrder) {
+            setToast({ show: true, orderId: newOrder.order_id || '#0000' });
+            setOrders(prev => {
+              if (prev.some(o => o.id === newOrder.id)) return prev;
+              return [newOrder, ...prev];
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [sessionUser]);
+
+  // Toast auto-dismiss duration limit (5 seconds)
+  useEffect(() => {
+    if (toast && toast.show) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const handleApproveOrder = async (orderIdInDb: string) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'approved' })
+        .eq('id', orderIdInDb);
+        
+      if (error) throw error;
+      
+      setOrders(prev => prev.map(o => o.id === orderIdInDb ? { ...o, status: 'approved' } : o));
+    } catch (err) {
+      console.error('Failed to approve order:', err);
+    }
+  };
+
+  const handleRejectOrder = async (orderIdInDb: string) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'rejected' })
+        .eq('id', orderIdInDb);
+        
+      if (error) throw error;
+      
+      setOrders(prev => prev.map(o => o.id === orderIdInDb ? { ...o, status: 'rejected' } : o));
+    } catch (err) {
+      console.error('Failed to reject order:', err);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,6 +347,9 @@ export default function AdminPage() {
     const monthlyMap: { [key: string]: number } = {};
 
     activeUserOrders.forEach(o => {
+      // CRITICAL: Ensure that LTV, product affinity, and monthly spent ONLY calculate from approved orders
+      if (o.status !== 'approved') return;
+
       const cost = o.price * o.quantity;
       ltv += cost;
 
@@ -346,6 +417,9 @@ export default function AdminPage() {
     const uniqueUsersToday = new Set<string>();
 
     orders.forEach(o => {
+      // CRITICAL: ignore pending or rejected orders to prevent fake data inflation
+      if (o.status !== 'approved') return;
+
       try {
         const orderDate = new Date(o.created_at || '').getTime();
         if (orderDate >= startOfTodayMs) {
@@ -367,6 +441,9 @@ export default function AdminPage() {
     // 2. Top Selling items graph data preparation
     const itemVolume: { [key: string]: number } = {};
     orders.forEach(o => {
+      // CRITICAL: ignore pending or rejected orders to prevent fake data inflation
+      if (o.status !== 'approved') return;
+
       itemVolume[o.item_name] = (itemVolume[o.item_name] || 0) + o.quantity;
     });
 
@@ -561,6 +638,18 @@ export default function AdminPage() {
             <BarChart2 className="w-3.5 h-3.5" />
             <span>Sales Analytics</span>
           </button>
+
+          <button 
+            onClick={() => setActiveTab('oms')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-mono font-bold tracking-wider uppercase transition-all flex items-center space-x-2 cursor-pointer ${
+              activeTab === 'oms' 
+                ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-[#0D0C0A]' 
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <ShoppingBag className="w-3.5 h-3.5" />
+            <span>Live Orders (OMS)</span>
+          </button>
         </div>
 
         {/* Controls Right */}
@@ -631,7 +720,7 @@ export default function AdminPage() {
                   compiledUsersList.map((u) => {
                     const isActive = u.id === selectedUserId;
                     const ordersCount = orders.filter(o => o.user_id === u.id).length;
-                    const spent = orders.filter(o => o.user_id === u.id).reduce((sum, o) => sum + (o.price * o.quantity), 0);
+                    const spent = orders.filter(o => o.user_id === u.id && o.status === 'approved').reduce((sum, o) => sum + (o.price * o.quantity), 0);
                     
                     return (
                       <div
@@ -875,16 +964,18 @@ export default function AdminPage() {
                           <thead>
                             <tr className="bg-[#100E0A] border-b border-[#2E271F] font-mono text-[9px] text-gray-400 uppercase tracking-wider select-none">
                               <th className="px-5 py-3">Order Date</th>
+                              <th className="px-5 py-3">Order ID</th>
                               <th className="px-5 py-3">Item Purchased</th>
                               <th className="px-5 py-3 text-center">Quantity</th>
                               <th className="px-5 py-3 text-right">Unit Price</th>
                               <th className="px-5 py-3 text-right">Grand Total</th>
+                              <th className="px-5 py-3 text-center">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {activeUserOrders.length === 0 ? (
                               <tr>
-                                <td colSpan={5} className="text-center py-10 text-gray-600 font-mono italic">
+                                <td colSpan={7} className="text-center py-10 text-gray-600 font-mono italic">
                                   No previous orders recorded for this user.
                                 </td>
                               </tr>
@@ -892,10 +983,22 @@ export default function AdminPage() {
                               activeUserOrders.map((o) => (
                                 <tr key={o.id || Math.random().toString()} className="border-b border-[#2E271F]/40 hover:bg-[#181612]/30 transition-colors">
                                   <td className="px-5 py-3 font-mono text-[10px] text-gray-400">{formatDate(o.created_at)} {formatTime(o.created_at || '')}</td>
+                                  <td className="px-5 py-3 font-mono text-xs text-amber-500 font-bold">{o.order_id || '#0000'}</td>
                                   <td className="px-5 py-3 font-medium text-gray-200">{o.item_name}</td>
                                   <td className="px-5 py-3 text-center font-mono text-gray-300">{o.quantity}</td>
                                   <td className="px-5 py-3 text-right font-mono text-gray-300">Rs. {o.price.toLocaleString()}</td>
                                   <td className="px-5 py-3 text-right font-mono font-bold text-amber-500">Rs. {(o.price * o.quantity).toLocaleString()}</td>
+                                  <td className="px-5 py-3 text-center">
+                                    <span className={`text-[8px] font-mono uppercase px-2 py-0.5 rounded-full font-bold select-none border ${
+                                      o.status === 'approved'
+                                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                        : o.status === 'rejected'
+                                          ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                    }`}>
+                                      {o.status || 'pending'}
+                                    </span>
+                                  </td>
                                 </tr>
                               ))
                             )}
@@ -1088,7 +1191,190 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ==========================================
+           TAB 3: LIVE ORDERS (OMS PANEL)
+           ========================================== */}
+        {activeTab === 'oms' && (
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 w-full animate-fade-in">
+            
+            {/* Header / Subtitle row with heartbeat */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-[#2E271F] pb-4 mb-4 select-none">
+              <div>
+                <h2 className="text-sm font-mono font-bold text-amber-500 uppercase tracking-widest flex items-center space-x-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
+                  <span>Real-Time Live Order Stream (OMS)</span>
+                </h2>
+                <p className="text-[10px] text-gray-500 font-mono mt-1 uppercase">
+                  Pending client purchases awaiting manual telephone verification and dashboard approval
+                </p>
+              </div>
+              
+              <div className="mt-2 sm:mt-0 bg-[#14120E] border border-[#2E271F] px-4 py-2 rounded-xl text-xs font-mono">
+                <span className="text-gray-500">Awaiting Decision: </span>
+                <span className="text-amber-500 font-bold">{orders.filter(o => o.status === 'pending').length} Orders</span>
+              </div>
+            </div>
+
+            {/* Pending Orders Grid */}
+            {orders.filter(o => o.status === 'pending').length === 0 ? (
+              <div className="bg-[#14120E] border border-dashed border-[#2E271F] p-12 rounded-2xl text-center select-none max-w-xl mx-auto space-y-4">
+                <div className="w-14 h-14 bg-amber-500/5 border border-amber-500/15 rounded-full flex items-center justify-center mx-auto text-xl">
+                  🎉
+                </div>
+                <div>
+                  <h3 className="text-xs font-mono font-bold text-gray-300 uppercase tracking-widest">
+                    ALL ORDERS PROCESSED
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-2 font-sans leading-relaxed">
+                    No pending orders are waiting in the queue. New incoming orders will slide in automatically in real-time.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {orders.filter(o => o.status === 'pending').map((o) => {
+                  const isGuest = o.user_id.startsWith('guest_');
+                  const customerProfile = profiles.find(p => p.id === o.user_id);
+                  const customerName = customerProfile?.name || (isGuest ? `Guest (${o.user_id.substring(6, 12)})` : 'Registered User');
+                  const customerPhone = customerProfile?.phone || (isGuest ? 'N/A' : 'Not Provided');
+                  const customerAddress = customerProfile?.address || (isGuest ? 'No registered profile address' : 'No address saved');
+                  
+                  return (
+                    <div 
+                      key={o.id} 
+                      className="bg-[#14120E] border border-[#2E271F] rounded-2xl overflow-hidden orange-neon-border flex flex-col justify-between transition-all hover:scale-[1.01]"
+                    >
+                      {/* Card Header */}
+                      <div className="px-4 py-3 bg-[#181612] border-b border-[#2E271F] flex justify-between items-center select-none">
+                        <div className="flex items-center space-x-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                          <span className="text-sm font-mono font-extrabold text-amber-500 tracking-wider">
+                            {o.order_id || '#0000'}
+                          </span>
+                        </div>
+                        <span className="text-[9px] font-mono text-gray-500">
+                          {formatDate(o.created_at)} {formatTime(o.created_at || '')}
+                        </span>
+                      </div>
+
+                      {/* Card Body */}
+                      <div className="p-4 space-y-4 flex-1">
+                        
+                        {/* Customer Info Section */}
+                        <div className="space-y-2 border-b border-[#2E271F]/40 pb-3">
+                          <div className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">
+                            Customer Details
+                          </div>
+                          
+                          <div className="space-y-1.5 text-xs text-gray-300 font-sans">
+                            <div className="flex items-center space-x-2">
+                              <User className="w-3.5 h-3.5 text-amber-500/70" />
+                              <span className="font-medium truncate">{customerName}</span>
+                              {isGuest && (
+                                <span className="text-[7px] font-mono uppercase bg-amber-500/10 text-amber-500 px-1 border border-amber-500/20 rounded">
+                                  Guest
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center space-x-2">
+                              <Phone className="w-3.5 h-3.5 text-amber-500/70" />
+                              <span className="font-mono text-gray-300">{customerPhone}</span>
+                            </div>
+
+                            <div className="flex items-start space-x-2">
+                              <MapPin className="w-3.5 h-3.5 text-amber-500/70 mt-0.5 flex-shrink-0" />
+                              <span className="text-gray-400 leading-normal truncate-2-lines">{customerAddress}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Product Detail Section */}
+                        <div className="space-y-2">
+                          <div className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">
+                            Items Ordered
+                          </div>
+                          
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="text-xs font-bold text-gray-200">{o.item_name}</h4>
+                              <p className="text-[10px] font-mono text-gray-500 mt-0.5">
+                                {o.quantity} x Rs. {o.price.toLocaleString()}
+                              </p>
+                            </div>
+                            
+                            <div className="text-right">
+                              <span className="text-xs font-mono text-gray-500 font-medium">Total Cost:</span>
+                              <h3 className="text-sm font-mono font-bold text-amber-500 mt-0.5">
+                                Rs. {(o.price * o.quantity).toLocaleString()}
+                              </h3>
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Card Actions Footer */}
+                      <div className="p-3 bg-[#181612]/50 border-t border-[#2E271F] flex items-center justify-between gap-3">
+                        <button
+                          onClick={() => handleRejectOrder(o.id)}
+                          className="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-400 font-mono text-[10px] font-bold uppercase tracking-wider py-2 rounded-xl active:scale-[0.98] transition-all cursor-pointer text-center"
+                        >
+                          Reject
+                        </button>
+                        
+                        <button
+                          onClick={() => handleApproveOrder(o.id)}
+                          className="flex-1 bg-green-500/15 hover:bg-green-500/25 border border-green-500/20 hover:border-green-500/40 text-green-400 font-mono text-[10px] font-bold uppercase tracking-wider py-2 rounded-xl active:scale-[0.98] transition-all cursor-pointer text-center"
+                        >
+                          Approve
+                        </button>
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+          </div>
+        )}
+
       </div>
+
+      {/* Toast Notification slide-in popup */}
+      {toast && toast.show && (
+        <div className="fixed bottom-6 right-6 bg-[#14120E] border border-amber-500/50 p-4 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.85)] flex items-start space-x-3.5 z-50 animate-slide-up max-w-sm orange-neon-border font-sans select-none">
+          <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-sm flex-shrink-0 animate-bounce">
+            🔔
+          </div>
+          <div className="space-y-1.5">
+            <h4 className="text-xs font-mono font-bold text-amber-500 uppercase tracking-widest">
+              Live OMS System Update
+            </h4>
+            <p className="text-xs text-gray-300 leading-normal">
+              New Order Received: <strong className="font-mono text-amber-500">{toast.orderId}</strong>
+            </p>
+            <div className="flex items-center space-x-2 pt-1">
+              <button
+                onClick={() => {
+                  setActiveTab('oms');
+                  setToast(null);
+                }}
+                className="bg-amber-500 hover:bg-amber-400 text-[#0D0C0A] font-mono text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded transition-all cursor-pointer"
+              >
+                View Order
+              </button>
+              <button
+                onClick={() => setToast(null)}
+                className="bg-[#1C1A15] hover:bg-[#2E271F] border border-[#2E271F] text-gray-400 hover:text-gray-200 font-mono text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded transition-all cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
