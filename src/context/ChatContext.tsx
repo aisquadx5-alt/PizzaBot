@@ -515,28 +515,43 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const aiFullResponseString = aiContent;
 
       let aiFinalText = aiFullResponseString;
-      // Correct 4-part Regex
-      const orderRegex = /\[ORDER:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^\]]+)\]/i;
+      // Catch anything that looks like [ORDER: ...]
+      const orderRegex = /\[ORDER:\s*(.+?)\]/i; 
       const match = aiFinalText.match(orderRegex);
 
       if (match) {
-        const orderId = match[1].trim();
-        const itemName = match[2].trim();
-        const quantity = parseInt(match[3].replace(/\D/g, ''), 10) || 1;
-        const price = parseInt(match[4].replace(/\D/g, ''), 10) || 0;
+        const innerText = match[1]; // e.g. "#1234 | Zinger | 1 | 400"
+        const parts = innerText.split('|').map(str => str.trim());
         
-        // STRIP TAG FROM UI
-        aiFinalText = aiFinalText.replace(orderRegex, '').trim();
-        
-        // SILENTLY INSERT INTO SUPABASE
-        supabase.from('orders').insert({ 
-          order_id: orderId,
-          user_id: activeUserId, 
-          item_name: itemName, 
-          quantity: quantity, 
-          price: price,
-          status: 'pending'
-        }).then((res: any) => console.log('Parsed Order Details:', { orderId, itemName, quantity, price }));
+        let orderId: any, itemName: any, quantity: any, price: any;
+
+        if (parts.length >= 4) {
+          orderId = parts[0];
+          itemName = parts[1];
+          quantity = parseInt(parts[2].replace(/\D/g, ''), 10) || 1;
+          price = parseInt(parts[3].replace(/\D/g, ''), 10) || 0;
+        } else if (parts.length === 3) {
+          orderId = '#' + Math.floor(1000 + Math.random() * 9000); // Auto-generate if AI forgets
+          itemName = parts[0];
+          quantity = parseInt(parts[1].replace(/\D/g, ''), 10) || 1;
+          price = parseInt(parts[2].replace(/\D/g, ''), 10) || 0;
+        }
+
+        // STRIP TAG COMPLETELY FROM UI
+        aiFinalText = aiFinalText.replace(match[0], '').trim();
+
+        if (itemName) {
+          supabase.from('orders').insert({
+            order_id: orderId,
+            user_id: activeUserId,
+            item_name: itemName,
+            quantity: quantity,
+            price: price,
+            status: 'pending'
+          }).then(({ error }: { error: any }) => {
+            if (error) console.error("Order Insert Failed:", error);
+          });
+        }
       }
 
       let finalContent = aiFinalText;
