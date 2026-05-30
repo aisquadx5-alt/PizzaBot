@@ -514,32 +514,32 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const activeUserId = user ? user.id : (guestId || (typeof window !== 'undefined' ? localStorage.getItem('pizza_guest_id') : null) || 'guest');
       const aiFullResponseString = aiContent;
 
-      let finalContent = aiFullResponseString; 
-      // Robust regex to catch the tag: [ORDER: order_id | item_name | quantity | price]
-      const orderRegex = /\[ORDER:\s*([^|\]]+?)\s*\|\s*([^|\]]+?)\s*\|\s*(\d+)\s*\|\s*(\d+)\]/i;
-      const match = finalContent.match(orderRegex);
+      let aiFinalText = aiFullResponseString;
+      // Correct 4-part Regex
+      const orderRegex = /\[ORDER:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^\]]+)\]/i;
+      const match = aiFinalText.match(orderRegex);
 
       if (match) {
         const orderId = match[1].trim();
         const itemName = match[2].trim();
-        const quantity = parseInt(match[3], 10);
-        const price = parseInt(match[4], 10);
+        const quantity = parseInt(match[3].replace(/\D/g, ''), 10) || 1;
+        const price = parseInt(match[4].replace(/\D/g, ''), 10) || 0;
         
-        // 1. STRIP the tag from the message
-        finalContent = finalContent.replace(match[0], '').trim();
+        // STRIP TAG FROM UI
+        aiFinalText = aiFinalText.replace(orderRegex, '').trim();
         
-        // 2. SILENTLY INSERT into orders table
-        supabase.from('orders').insert({
-          user_id: activeUserId,
+        // SILENTLY INSERT INTO SUPABASE
+        supabase.from('orders').insert({ 
           order_id: orderId,
-          item_name: itemName,
-          quantity: quantity,
+          user_id: activeUserId, 
+          item_name: itemName, 
+          quantity: quantity, 
           price: price,
           status: 'pending'
-        }).then(({ error }: { error: any }) => {
-          if (error) console.error('Order Insert Failed:', error);
-        });
+        }).then((res: any) => console.log('Parsed Order Details:', { orderId, itemName, quantity, price }));
       }
+
+      let finalContent = aiFinalText;
 
       const aiMsgId = 'local_ai_' + Math.random().toString(36).substring(2, 15);
       
